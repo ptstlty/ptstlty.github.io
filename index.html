@@ -2,32 +2,97 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>固定5000行阅读器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文本阅读器</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{height:100vh;overflow:hidden;background:#fff;}
-#fileInput{position:absolute;top:8px;left:8px;z-index:10}
+
+#topBar{
+  position:absolute;
+  top:8px;
+  left:8px;
+  right:8px;
+  z-index:10;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+}
+#pageInfo{
+  position:absolute;
+  top:10px;
+  right:12px;
+  z-index:11;
+  font-size:14px;
+  color:#444;
+  background:rgba(255,255,255,0.85);
+  padding:2px 6px;
+}
+
 #textContainer{
-  width:100vw;height:100vh;
-  padding:16px;
+  width:100vw;
+  height:calc(100vh - 60px);
+  padding:48px 16px 16px 16px;
   overflow:auto;
 }
 .line{
   white-space:pre;
   font-family:monospace;
 }
+
+#btnBar{
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  height:50px;
+  display:flex;
+  justify-content:center;
+  gap:24px;
+  align-items:center;
+  background:#f8f8f8;
+  border-top:1px solid #ccc;
+  z-index:10;
+}
+button{
+  padding:6px 18px;
+  font-size:15px;
+  cursor:pointer;
+}
+input[type="number"]{
+  width:70px;
+  padding:4px;
+}
 </style>
 </head>
 <body>
-<input type="file" id="fileInput" accept=".txt">
+<div id="topBar">
+  <input type="file" id="fileInput" accept=".txt">
+  <label>每页行数:</label>
+  <input type="number" id="linesPerPageInput" value="5000" min="1">
+  <button id="applyLinesBtn">应用</button>
+</div>
+<div id="pageInfo"></div>
 <div id="textContainer"></div>
+<div id="btnBar">
+  <button id="btnPrev">上一页</button>
+  <button id="btnNext">下一页</button>
+</div>
 
 <script>
-const LINES_PER_PAGE = 5000;
+let LINES_PER_PAGE = 5000;
 let allLines = [];
 let currentPage = 0;
+let totalPage = 0;
+
 const fileInput = document.getElementById('fileInput');
 const textContainer = document.getElementById('textContainer');
+const pageInfo = document.getElementById('pageInfo');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const linesPerPageInput = document.getElementById('linesPerPageInput');
+const applyLinesBtn = document.getElementById('applyLinesBtn');
 
 fileInput.onchange = async e=>{
   const f = e.target.files[0];
@@ -35,11 +100,25 @@ fileInput.onchange = async e=>{
   const txt = await f.text();
   allLines = txt.split(/\r?\n/);
   currentPage = 0;
+  recalcPage();
   render();
 };
 
+applyLinesBtn.onclick = ()=>{
+  const val = parseInt(linesPerPageInput.value,10);
+  if(!Number.isInteger(val) || val <1) return;
+  LINES_PER_PAGE = val;
+  currentPage = 0;
+  recalcPage();
+  render();
+};
+
+function recalcPage(){
+  totalPage = allLines.length>0 ? Math.ceil(allLines.length / LINES_PER_PAGE) : 0;
+}
+
 function render(){
-  textContainer.innerHTML = ''; //清空
+  textContainer.innerHTML = '';
   const s = currentPage * LINES_PER_PAGE;
   const e = s + LINES_PER_PAGE;
   const slice = allLines.slice(s,e);
@@ -49,19 +128,17 @@ function render(){
     div.textContent = line;
     textContainer.appendChild(div);
   }
+  pageInfo.textContent = totalPage>0 ? `${currentPage+1} / ${totalPage}` : '';
+  btnPrev.disabled = currentPage <= 0;
+  btnNext.disabled = currentPage >= totalPage - 1;
 }
 
-//点击区域：左半屏上一页，右半屏下一页
-document.body.onclick = ev=>{
-  const w = window.innerWidth;
-  const x = ev.clientX;
-  const totalPage = Math.ceil(allLines.length / LINES_PER_PAGE);
-  if(x < w*0.45){
-    if(currentPage>0){ currentPage--; render(); }
-  }else if(x> w*0.55){
-    if(currentPage < totalPage-1){ currentPage++; render(); }
-  }
-}
+btnPrev.onclick = ()=>{
+  if(currentPage>0){ currentPage--; render(); }
+};
+btnNext.onclick = ()=>{
+  if(currentPage < totalPage-1){ currentPage++; render(); }
+};
 </script>
 </body>
 </html>
