@@ -1,104 +1,67 @@
-<html lang="en">
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Local Text Pagination Reader | 10000 lines per page</title>
-    <style>
-        * {box-sizing: border-box;margin:0;padding:0;font-family: Consolas, monospace;}
-        body {padding:16px;background:#1a1a1a;color:#eee;}
-        .wrap {max-width:1400px;margin:0 auto;}
-        .control-bar {margin-bottom:12px;padding:10px;background:#2d2d2d;border-radius:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-        #content {
-            white-space: pre-wrap;
-            word-break: break-all;
-            background:#0f0f0f;
-            padding:14px;
-            border-radius:6px;
-            min-height: 600px;
-            font-size:13px;
-            line-height:1.5;
-            overflow:auto;
-        }
-        button {padding:6px 14px;border:none;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer;}
-        button:disabled {background:#444;cursor:not-allowed;}
-        input {padding:6px;}
-        .info {color:#aaa;font-size:14px;}
-    </style>
+<meta charset="UTF-8">
+<title>固定5000行阅读器</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{height:100vh;overflow:hidden;background:#fff;}
+#fileInput{position:absolute;top:8px;left:8px;z-index:10}
+#textContainer{
+  width:100vw;height:100vh;
+  padding:16px;
+  overflow:auto;
+}
+.line{
+  white-space:pre;
+  font-family:monospace;
+}
+</style>
 </head>
 <body>
-<div class="wrap">
-    <div class="control-bar">
-        <input type="file" id="fileInput" accept=".txt">
-        <button id="prevBtn" disabled>Previous</button>
-        <button id="nextBtn" disabled>Next</button>
-        <div>Jump to <input type="number" id="pageInput" style="width:70px"> <button id="goBtn">Go</button></div>
-        <div class="info">
-            <span id="pageInfo">No file loaded</span>
-        </div>
-    </div>
-    <div id="content">Please select a local txt file...</div>
-</div>
+<input type="file" id="fileInput" accept=".txt">
+<div id="textContainer"></div>
 
 <script>
-    const PAGE_ROW = 10000; // Lines per page
-    const fileInput = document.getElementById('fileInput');
-    const contentDom = document.getElementById('content');
-    const prevBtn = document.getElementById('prevBtn');
-    const nextBtn = document.getElementById('nextBtn');
-    const pageInfo = document.getElementById('pageInfo');
-    const pageInput = document.getElementById('pageInput');
-    const goBtn = document.getElementById('goBtn');
+const LINES_PER_PAGE = 5000;
+let allLines = [];
+let currentPage = 0;
+const fileInput = document.getElementById('fileInput');
+const textContainer = document.getElementById('textContainer');
 
-    let allLines = [];
-    let currentPage = 1;
-    let totalPage = 0;
+fileInput.onchange = async e=>{
+  const f = e.target.files[0];
+  if(!f)return;
+  const txt = await f.text();
+  allLines = txt.split(/\r?\n/);
+  currentPage = 0;
+  render();
+};
 
-    // Read file
-    fileInput.onchange = async function(e){
-        const file = e.target.files[0];
-        if(!file) return;
-        contentDom.textContent = "Loading and parsing file...";
-        const text = await file.text();
-        // Split lines, support \r\n \n
-        allLines = text.split(/\r?\n/);
-        totalPage = Math.ceil(allLines.length / PAGE_ROW);
-        currentPage = 1;
-        renderPage();
-    }
+function render(){
+  textContainer.innerHTML = ''; //清空
+  const s = currentPage * LINES_PER_PAGE;
+  const e = s + LINES_PER_PAGE;
+  const slice = allLines.slice(s,e);
+  for(const line of slice){
+    const div = document.createElement('div');
+    div.className = "line";
+    div.textContent = line;
+    textContainer.appendChild(div);
+  }
+}
 
-    // Render current page
-    function renderPage(){
-        const start = (currentPage -1) * PAGE_ROW;
-        const end = start + PAGE_ROW;
-        const pageData = allLines.slice(start, end);
-        contentDom.textContent = pageData.join('\n');
-
-        pageInfo.textContent = `Page ${currentPage} / ${totalPage}, Total lines: ${allLines.length}`;
-        pageInput.value = currentPage;
-
-        prevBtn.disabled = currentPage <= 1;
-        nextBtn.disabled = currentPage >= totalPage;
-    }
-
-    prevBtn.onclick = ()=>{
-        if(currentPage>1){
-            currentPage--;
-            renderPage();
-        }
-    }
-    nextBtn.onclick = ()=>{
-        if(currentPage < totalPage){
-            currentPage++;
-            renderPage();
-        }
-    }
-    goBtn.onclick = ()=>{
-        let p = Number(pageInput.value);
-        if(isNaN(p)) return;
-        p = Math.max(1, Math.min(totalPage, p));
-        currentPage = p;
-        renderPage();
-    }
+//点击区域：左半屏上一页，右半屏下一页
+document.body.onclick = ev=>{
+  const w = window.innerWidth;
+  const x = ev.clientX;
+  const totalPage = Math.ceil(allLines.length / LINES_PER_PAGE);
+  if(x < w*0.45){
+    if(currentPage>0){ currentPage--; render(); }
+  }else if(x> w*0.55){
+    if(currentPage < totalPage-1){ currentPage++; render(); }
+  }
+}
 </script>
 </body>
 </html>
