@@ -15,9 +15,9 @@ body{height:100vh;overflow:hidden;background:#fff;}
   right:8px;
   z-index:10;
   display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-  align-items:center;
+  flex-direction:column;
+  gap:8px;
+  align-items:flex-start;
 }
 #pageInfo{
   position:absolute;
@@ -28,12 +28,19 @@ body{height:100vh;overflow:hidden;background:#fff;}
   color:#444;
   background:rgba(255,255,255,0.85);
   padding:2px 6px;
+  border-radius:4px;
+}
+
+.row-item{
+  display:flex;
+  gap:6px;
+  align-items:center;
 }
 
 #textContainer{
   width:100vw;
   height:calc(100vh - 60px);
-  padding:48px 16px 16px 16px;
+  padding:76px 16px 16px 16px;
   overflow:auto;
 }
 .line{
@@ -60,6 +67,10 @@ button{
   font-size:15px;
   cursor:pointer;
 }
+button:disabled{
+  cursor:not-allowed;
+  opacity:0.5;
+}
 input[type="number"]{
   width:70px;
   padding:4px;
@@ -68,10 +79,14 @@ input[type="number"]{
 </head>
 <body>
 <div id="topBar">
-  <input type="file" id="fileInput" accept=".txt">
-  <label>每页行数:</label>
-  <input type="number" id="linesPerPageInput" value="5000" min="1">
-  <button id="applyLinesBtn">应用</button>
+  <div class="row-item">
+    <input type="file" id="fileInput" accept=".txt">
+  </div>
+  <div class="row-item">
+    <label>每页行数:</label>
+    <input type="number" id="linesPerPageInput" value="5000" min="1">
+    <button id="applyLinesBtn">应用</button>
+  </div>
 </div>
 <div id="pageInfo"></div>
 <div id="textContainer"></div>
@@ -99,6 +114,10 @@ fileInput.onchange = async e=>{
   if(!f)return;
   const txt = await f.text();
   allLines = txt.split(/\r?\n/);
+  // 移除文件末尾换行造成的多余空行，文本中间空行保留
+  while(allLines.length > 0 && allLines.at(-1) === ""){
+    allLines.pop();
+  }
   currentPage = 0;
   recalcPage();
   render();
@@ -107,8 +126,10 @@ fileInput.onchange = async e=>{
 applyLinesBtn.onclick = ()=>{
   const val = parseInt(linesPerPageInput.value,10);
   if(!Number.isInteger(val) || val <1) return;
+  // 保存当前阅读行位置，切换每页行数不跳回首页
+  const currentLineIndex = currentPage * LINES_PER_PAGE;
   LINES_PER_PAGE = val;
-  currentPage = 0;
+  currentPage = Math.floor(currentLineIndex / LINES_PER_PAGE);
   recalcPage();
   render();
 };
@@ -128,17 +149,31 @@ function render(){
     div.textContent = line;
     textContainer.appendChild(div);
   }
-  pageInfo.textContent = totalPage>0 ? `${currentPage+1} / ${totalPage}` : '';
+
+  if(totalPage>0){
+    const endLine = Math.min(e, allLines.length);
+    pageInfo.textContent = `${currentPage+1}/${totalPage} | ${s+1}‑${endLine}行`;
+  }else{
+    pageInfo.textContent = '未加载文件';
+  }
+
   btnPrev.disabled = currentPage <= 0;
   btnNext.disabled = currentPage >= totalPage - 1;
 }
 
 btnPrev.onclick = ()=>{
-  if(currentPage>0){ currentPage--; render(); }
+  if(currentPage>0){
+    currentPage--;
+    render();
+  }
 };
 btnNext.onclick = ()=>{
-  if(currentPage < totalPage-1){ currentPage++; render(); }
+  if(currentPage < totalPage-1){
+    currentPage++;
+    render();
+  }
 };
 </script>
 </body>
 </html>
+
