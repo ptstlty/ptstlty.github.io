@@ -1,11 +1,104 @@
-<!DOCTYPE html>
-<html lang="zh‑CN">
+<html lang="en">
 <head>
-<meta charset="utf‑8">
-<title>ptstlty 的主页</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Text Pagination Reader | 10000 lines per page</title>
+    <style>
+        * {box-sizing: border-box;margin:0;padding:0;font-family: Consolas, monospace;}
+        body {padding:16px;background:#1a1a1a;color:#eee;}
+        .wrap {max-width:1400px;margin:0 auto;}
+        .control-bar {margin-bottom:12px;padding:10px;background:#2d2d2d;border-radius:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+        #content {
+            white-space: pre-wrap;
+            word-break: break-all;
+            background:#0f0f0f;
+            padding:14px;
+            border-radius:6px;
+            min-height: 600px;
+            font-size:13px;
+            line-height:1.5;
+            overflow:auto;
+        }
+        button {padding:6px 14px;border:none;border-radius:4px;background:#2563eb;color:#fff;cursor:pointer;}
+        button:disabled {background:#444;cursor:not-allowed;}
+        input {padding:6px;}
+        .info {color:#aaa;font-size:14px;}
+    </style>
 </head>
 <body>
-<h1>你好，这里是我的个人主页</h1>
-<p>用户名：ptstlty</p>
+<div class="wrap">
+    <div class="control-bar">
+        <input type="file" id="fileInput" accept=".txt">
+        <button id="prevBtn" disabled>Previous</button>
+        <button id="nextBtn" disabled>Next</button>
+        <div>Jump to <input type="number" id="pageInput" style="width:70px"> <button id="goBtn">Go</button></div>
+        <div class="info">
+            <span id="pageInfo">No file loaded</span>
+        </div>
+    </div>
+    <div id="content">Please select a local txt file...</div>
+</div>
+
+<script>
+    const PAGE_ROW = 10000; // Lines per page
+    const fileInput = document.getElementById('fileInput');
+    const contentDom = document.getElementById('content');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const pageInfo = document.getElementById('pageInfo');
+    const pageInput = document.getElementById('pageInput');
+    const goBtn = document.getElementById('goBtn');
+
+    let allLines = [];
+    let currentPage = 1;
+    let totalPage = 0;
+
+    // Read file
+    fileInput.onchange = async function(e){
+        const file = e.target.files[0];
+        if(!file) return;
+        contentDom.textContent = "Loading and parsing file...";
+        const text = await file.text();
+        // Split lines, support \r\n \n
+        allLines = text.split(/\r?\n/);
+        totalPage = Math.ceil(allLines.length / PAGE_ROW);
+        currentPage = 1;
+        renderPage();
+    }
+
+    // Render current page
+    function renderPage(){
+        const start = (currentPage -1) * PAGE_ROW;
+        const end = start + PAGE_ROW;
+        const pageData = allLines.slice(start, end);
+        contentDom.textContent = pageData.join('\n');
+
+        pageInfo.textContent = `Page ${currentPage} / ${totalPage}, Total lines: ${allLines.length}`;
+        pageInput.value = currentPage;
+
+        prevBtn.disabled = currentPage <= 1;
+        nextBtn.disabled = currentPage >= totalPage;
+    }
+
+    prevBtn.onclick = ()=>{
+        if(currentPage>1){
+            currentPage--;
+            renderPage();
+        }
+    }
+    nextBtn.onclick = ()=>{
+        if(currentPage < totalPage){
+            currentPage++;
+            renderPage();
+        }
+    }
+    goBtn.onclick = ()=>{
+        let p = Number(pageInput.value);
+        if(isNaN(p)) return;
+        p = Math.max(1, Math.min(totalPage, p));
+        currentPage = p;
+        renderPage();
+    }
+</script>
 </body>
 </html>
