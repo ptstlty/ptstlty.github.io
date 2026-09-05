@@ -93,6 +93,7 @@ input[type="number"]{
 <div id="btnBar">
   <button id="btnPrev">上一页</button>
   <button id="btnNext">下一页</button>
+  <button id="btnSavePage">保存本页</button>
 </div>
 
 <script>
@@ -100,18 +101,21 @@ let LINES_PER_PAGE = 5000;
 let allLines = [];
 let currentPage = 0;
 let totalPage = 0;
+let originFileName = ""; // 保存原始文件名
 
 const fileInput = document.getElementById('fileInput');
 const textContainer = document.getElementById('textContainer');
 const pageInfo = document.getElementById('pageInfo');
 const btnPrev = document.getElementById('btnPrev');
 const btnNext = document.getElementById('btnNext');
+const btnSavePage = document.getElementById('btnSavePage');
 const linesPerPageInput = document.getElementById('linesPerPageInput');
 const applyLinesBtn = document.getElementById('applyLinesBtn');
 
 fileInput.onchange = async e=>{
   const f = e.target.files[0];
   if(!f)return;
+  originFileName = f.name.replace(/\.txt$/i,""); // 去掉后缀
   const txt = await f.text();
   allLines = txt.split(/\r?\n/);
   // 移除文件末尾换行造成的多余空行，文本中间空行保留
@@ -159,7 +163,30 @@ function render(){
 
   btnPrev.disabled = currentPage <= 0;
   btnNext.disabled = currentPage >= totalPage - 1;
+  btnSavePage.disabled = totalPage <=0; // 没有文件时保存按钮禁用
 }
+
+// 保存当前页下载
+btnSavePage.onclick = ()=>{
+  if(totalPage <= 0) return;
+  const s = currentPage * LINES_PER_PAGE;
+  const e = s + LINES_PER_PAGE;
+  const slice = allLines.slice(s,e);
+  const pageText = slice.join("\r\n");
+
+  // 文件名：原始文件名_第N页_共M页.txt
+  const saveName = `${originFileName}_${currentPage+1}_${totalPage}.txt`;
+
+  const blob = new Blob([pageText], {type:"text/plain;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = saveName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
 
 btnPrev.onclick = ()=>{
   if(currentPage>0){
@@ -176,4 +203,3 @@ btnNext.onclick = ()=>{
 </script>
 </body>
 </html>
-
