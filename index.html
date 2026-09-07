@@ -176,9 +176,9 @@ input[type="number"]{
 
 <div id="btnBar">
 
-  <button id="btnPrev">Prev</button>
+  <button id="btnPrev">Prev page</button>
 
-  <button id="btnNext">Next</button>
+  <button id="btnNext">Next page</button>
 
 </div>
 
@@ -284,11 +284,11 @@ function render(){
 
     const endLine = Math.min(e, allLines.length);
 
-    pageInfo.textContent = `${currentPage+1}/${totalPage} | ${s+1}‑${endLine}行`;
+    pageInfo.textContent = `${currentPage+1}/${totalPage} | ${s+1}‑${endLine}Lines`;
 
   }else{
 
-    pageInfo.textContent = '未加载文件';
+    pageInfo.textContent = 'File not loaded';
 
   }
 
@@ -327,6 +327,4 @@ btnNext.onclick = ()=>{
 </body>
 
 </html>
-
-
 
