@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wechat Translate Detect Demo</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    padding:24px;
+    font-family:system-ui,monospace;
+    background:#fff;
+}
+#textWrap{
+    white-space:pre-wrap;
+    font-size:16px;
+    line-height:1.6;
+    border:1px solid #ccc;
+    padding:16px;
+    border-radius:8px;
+    max-width:700px;
+}
+/* 提示toast样式 */
+#transToast{
+    position:fixed;
+    bottom:90px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.78);
+    color:#fff;
+    padding:10px 18px;
+    border-radius:8px;
+    z-index:9999;
+    display:none;
+}
+#copyTranslateBtn{
+    position:fixed;
+    bottom:30px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:9999;
+    padding:8px 20px;
+    font-size:15px;
+    display:none;
+    cursor:pointer;
+}
+/* 静态隐藏textarea，不要js动态创建删除！ */
+#copyTa{
+    position:fixed;
+    left:-9999px;
+    top:-9999px;
+    width:1px;
+    height:1px;
+    opacity:0;
+}
+</style>
+</head>
+<body>
+
+<div id="textWrap">
+Life is a journey, not a destination.
+We should enjoy every moment along the way.
+Keep curiosity and keep moving forward.
+Do not fear difficulties and setbacks.
+Every effort you make will pay off someday.
+</div>
+
+<div id="transToast"></div>
+<button id="copyTranslateBtn">复制翻译后的文本</button>
+<!-- 提前写死在页面，永久存在，不动态增删DOM -->
+<textarea id="copyTa"></textarea>
+
+<script>
+const textWrap = document.getElementById('textWrap');
+const transToast = document.getElementById('transToast');
+const copyTranslateBtn = document.getElementById('copyTranslateBtn');
+const copyTa = document.getElementById('copyTa');
+
+let observer = null;
+let debounceTimer = null;
+// 保存页面最开始原始英文快照
+const originText = textWrap.textContent.trim();
+
+// 判断是否微信内置浏览器
+function isWeChatBrowser(){
+    return /micromessenger/i.test(navigator.userAgent);
+}
+
+// 显示toast提示
+function showToast(msg){
+    transToast.textContent = msg;
+    transToast.style.display = "block";
+    setTimeout(()=>{
+        transToast.style.display = "none";
+    }, 2800);
+}
+
+// 复制文本，修复关键点：不再动态创建/删除textarea
+async function copyText(text){
+    if(!text) return;
+    try{
+        await navigator.clipboard.writeText(text);
+        showToast("✅复制译文成功");
+    }catch(err){
+        // 降级：复用已经存在的textarea，不改动DOM树结构
+        copyTa.value = text;
+        copyTa.select();
+        document.execCommand('copy');
+        showToast("✅复制译文成功(兼容模式)");
+    }
+}
+
+// 启动翻译监听：持续监听，处理翻译/取消翻译来回切换
+function startWatchTranslate(){
+    if(!isWeChatBrowser()) return;
+    if(observer) observer.disconnect();
+    copyTranslateBtn.style.display = "none";
+
+    observer = new MutationObserver(()=>{
+        if(debounceTimer) clearTimeout(debounceTimer);
+
+        debounceTimer = setTimeout(()=>{
+            const currentText = textWrap.textContent.trim();
+            // DOM文本等于原始英文 → 用户取消翻译，隐藏按钮
+            if(currentText === originText){
+                copyTranslateBtn.style.display = "none";
+            }else{
+                // 和原文不一样，代表已经翻译为中文，显示复制按钮
+                copyTranslateBtn.style.display = "block";
+            }
+        }, 600);
+    });
+
+    observer.observe(textWrap,{
+        subtree:true,
+        characterData:true,
+        childList:true
+    });
+}
+
+// 点击复制按钮：读取DOM中翻译后的内容
+copyTranslateBtn.addEventListener('click',async ()=>{
+    const translatedContent = textWrap.textContent;
+    await copyText(translatedContent);
+});
+
+window.addEventListener('load',()=>{
+    startWatchTranslate();
+});
+
+// 页面卸载清理
+window.addEventListener('beforeunload',()=>{
+    if(observer) observer.disconnect();
+    if(debounceTimer) clearTimeout(debounceTimer);
+});
+</script>
+
+</body>
+</html>
