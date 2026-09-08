@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 
 <html lang="en">
@@ -150,11 +151,11 @@ input[type="number"]{
     bottom:60px;
     left:50%;
     transform:translateX(-50%);
-    background:rgba(0,0,0,0.78);
+    background:rgba(0,0,0,0.82);
     color:#fff;
-    padding:10px 18px;
+    padding:12px 20px;
     border-radius:8px;
-    z-index:9999;
+    z-index:99999;
     display:none;
 }
 
@@ -228,7 +229,6 @@ const transToast = document.getElementById('transToast');
 let observer = null;
 let debounceTimer = null;
 let ignoreMutation = false;
-let pageOriginText = ""; //当前页面原始文本快照（保留全部换行空白）
 let hasTriggerCopy = false; //本页是否已经执行过复制，防止重复复制
 
 function isWeChatBrowser(){
@@ -240,7 +240,7 @@ function showToast(msg){
     transToast.style.display = "block";
     setTimeout(()=>{
         transToast.style.display = "none";
-    },2500);
+    },2800);
 }
 
 // 收集页面所有.line，保留换行，获取译文
@@ -253,9 +253,9 @@ function getTranslatedTextWithLineBreak(){
     return buf.join("\n");
 }
 
-// 判断文本里面是否包含中文字符
+// 判断文本里面是否包含中文字符【修复：普通减号】
 function hasChineseChar(str){
-    return /[\u4e00‑\u9fa5]/.test(str);
+    return /[\u4e00-\u9fa5]/.test(str);
 }
 
 async function copyText(text){
@@ -391,9 +391,6 @@ function render(){
 
   }
 
-  //保存本页原始快照
-  pageOriginText = getTranslatedTextWithLineBreak();
-
   if(totalPage>0){
 
     const endLine = Math.min(e, allLines.length);
@@ -445,4 +442,4 @@ window.addEventListener('beforeunload',()=>{
 
 </body>
 
-  </html>
+</html>
