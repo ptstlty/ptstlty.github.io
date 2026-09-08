@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Text Reader</title>
+
+<style>
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{height:100vh;overflow:hidden;background:#fff;}
+
+#topBar{
+
+  position:absolute;
+
+  top:8px;
+
+  left:8px;
+
+  right:8px;
+
+  z-index:10;
+
+  display:flex;
+
+  flex-direction:column;
+
+  gap:8px;
+
+  align-items:flex-start;
+
+}
+
+#pageInfo{
+
+  position:absolute;
+
+  top:10px;
+
+  right:12px;
+
+  z-index:11;
+
+  font-size:14px;
+
+  color:#444;
+
+  background:rgba(255,255,255,0.85);
+
+  padding:2px 6px;
+
+  border-radius:4px;
+
+}
+
+.row-item{
+
+  display:flex;
+
+  gap:6px;
+
+  align-items:center;
+
+}
+
+#textContainer{
+
+  width:100vw;
+
+  height:calc(100vh - 60px);
+
+  padding:76px 16px 16px 16px;
+
+  overflow:auto;
+
+}
+
+.line{
+
+  white-space:pre;
+
+  font-family:monospace;
+
+}
+
+#btnBar{
+
+  position:fixed;
+
+  bottom:0;
+
+  left:0;
+
+  width:100%;
+
+  height:50px;
+
+  display:flex;
+
+  justify-content:center;
+
+  gap:24px;
+
+  align-items:center;
+
+  background:#f8f8f8;
+
+  border-top:1px solid #ccc;
+
+  z-index:10;
+
+}
+
+button{
+
+  padding:6px 18px;
+
+  font-size:15px;
+
+  cursor:pointer;
+
+}
+
+button:disabled{
+
+  cursor:not-allowed;
+
+  opacity:0.5;
+
+}
+
+input[type="number"]{
+
+  width:70px;
+
+  padding:4px;
+
+}
+
+/* toast提示 */
+#transToast{
+    position:fixed;
+    bottom:60px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.78);
+    color:#fff;
+    padding:10px 18px;
+    border-radius:8px;
+    z-index:9999;
+    display:none;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="topBar">
+
+  <div class="row-item">
+
+    <input type="file" id="fileInput" accept=".txt">
+
+  </div>
+
+  <div class="row-item">
+
+    <label>Lines per page:</label>
+
+    <input type="number" id="linesPerPageInput" value="5000" min="1">
+
+    <button id="applyLinesBtn">apply</button>
+
+  </div>
+  <!-- 新增：中文阈值设置 -->
+  <div class="row-item">
+    <label>中文阈值%：</label>
+    <input type="number" id="cnRatioInput" value="30" min="0" max="100">
+  </div>
+</div>
+
+<div id="pageInfo"></div>
+
+<div id="textContainer"></div>
+
+<div id="btnBar">
+
+  <button id="btnPrev">Prev page</button>
+
+  <button id="btnNext">Next page</button>
+
+</div>
+
+<div id="transToast"></div>
+
+<script>
+
+let LINES_PER_PAGE = 5000;
+// 中文最低占比阈值
+let CN_RATIO_THRESHOLD = 0.3;
+
+let allLines = [];
+
+let currentPage = 0;
+
+let totalPage = 0;
+
+const fileInput = document.getElementById('fileInput');
+
+const textContainer = document.getElementById('textContainer');
+
+const pageInfo = document.getElementById('pageInfo');
+
+const btnPrev = document.getElementById('btnPrev');
+
+const btnNext = document.getElementById('btnNext');
+
+const linesPerPageInput = document.getElementById('linesPerPageInput');
+
+const applyLinesBtn = document.getElementById('applyLinesBtn');
+
+const transToast = document.getElementById('transToast');
+const cnRatioInput = document.getElementById('cnRatioInput');
+
+// =========微信翻译检测变量========
+let observer = null;
+let debounceTimer = null;
+let ignoreMutation = false;
+let pageOriginText = ""; //当前页面原始文本快照
+
+// 计算文本中文汉字占比
+function getChineseRatio(text) {
+    // 匹配汉字
+    const cnReg = /[\u4e00-\u9fa5]/g;
+    // 匹配所有可见字符（剔除空白、换行）
+    const charReg = /[^\s]/g;
+
+    const cnMatch = text.match(cnReg);
+    const charMatch = text.match(charReg);
+
+    const cnCount = cnMatch ? cnMatch.length : 0;
+    const totalChar = charMatch ? charMatch.length : 0;
+
+    if(totalChar === 0) return 0;
+    return cnCount / totalChar;
+}
+
+function isWeChatBrowser(){
+    return /micromessenger/i.test(navigator.userAgent);
+}
+
+function showToast(msg){
+    transToast.textContent = msg;
+    transToast.style.display = "block";
+    setTimeout(()=>{
+        transToast.style.display = "none";
+    },2500);
+}
+
+async function copyText(text){
+    if(!text) return false;
+    try{
+        await navigator.clipboard.writeText(text);
+        return true;
+    }catch(err){
+        showToast("❌环境不支持自动复制，请手动复制");
+        return false;
+    }
+}
+
+//启动监听当前页面容器
+function startWatchTranslate(){
+    if(!isWeChatBrowser()) return;
+    if(observer) observer.disconnect();
+
+    observer = new MutationObserver(()=>{
+        if(ignoreMutation) return;
+
+        if(debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async ()=>{
+            const currentDomText = textContainer.textContent.trim();
+            //变回原文
+            if(currentDomText === pageOriginText.trim()){
+                return;
+            }
+
+            // =====新增中文占比判断=====
+            const ratio = getChineseRatio(pageOriginText);
+            if(ratio < CN_RATIO_THRESHOLD){
+                showToast(`⚠️原文中文占比${(ratio*100).toFixed(1)}%，低于阈值，不自动复制`);
+                ignoreMutation = true;
+                //清除选区
+                if(window.getSelection){
+                    window.getSelection().removeAllRanges();
+                }
+                setTimeout(()=>{
+                    ignoreMutation = false;
+                },600);
+                return;
+            }
+
+            //中文达标才执行复制译文
+            ignoreMutation = true;
+            const ok = await copyText(textContainer.textContent);
+            if(ok){
+                showToast(`✅微信翻译完成，译文已复制（原文中文${(ratio*100).toFixed(1)}%）`);
+            }
+            //清除选区
+            if(window.getSelection){
+                window.getSelection().removeAllRanges();
+            }
+            setTimeout(()=>{
+                ignoreMutation = false;
+            },600);
+        },600);
+    });
+
+    observer.observe(textContainer,{
+        subtree:true,
+        characterData:true,
+        childList:true
+    });
+}
+
+//销毁监听
+function stopWatchTranslate(){
+    if(observer) observer.disconnect();
+    if(debounceTimer) clearTimeout(debounceTimer);
+}
+// =====================================
+
+fileInput.onchange = async e=>{
+
+  const f = e.target.files[0];
+
+  if(!f)return;
+
+  const txt = await f.text();
+
+  allLines = txt.split(/\r?\n/);
+
+  // 移除文件末尾换行造成的多余空行，文本中间空行保留
+
+  while(allLines.length > 0 && allLines.at(-1) === ""){
+
+    allLines.pop();
+
+  }
+
+  currentPage = 0;
+
+  recalcPage();
+
+  render();
+
+};
+
+applyLinesBtn.onclick = ()=>{
+
+  const val = parseInt(linesPerPageInput.value,10);
+
+  if(!Number.isInteger(val) || val <1) return;
+
+  // 保存当前阅读行位置，切换每页行数不跳回首页
+
+  const currentLineIndex = currentPage * LINES_PER_PAGE;
+
+  LINES_PER_PAGE = val;
+
+  currentPage = Math.floor(currentLineIndex / LINES_PER_PAGE);
+
+  recalcPage();
+
+  render();
+
+};
+
+// 更新中文阈值
+cnRatioInput.onchange = ()=>{
+  const val = parseFloat(cnRatioInput.value);
+  if(!isNaN(val) && val >=0 && val <=100){
+    CN_RATIO_THRESHOLD = val / 100;
+    showToast(`✅中文阈值已设置为${val}%`);
+  }else{
+    showToast("❌请输入0~100之间数字");
+    cnRatioInput.value = CN_RATIO_THRESHOLD *100;
+  }
+}
+
+function recalcPage(){
+
+  totalPage = allLines.length>0 ? Math.ceil(allLines.length / LINES_PER_PAGE) : 0;
+
+}
+
+function render(){
+  stopWatchTranslate(); //销毁旧页面监听
+
+  textContainer.innerHTML = '';
+
+  const s = currentPage * LINES_PER_PAGE;
+
+  const e = s + LINES_PER_PAGE;
+
+  const slice = allLines.slice(s,e);
+
+  for(const line of slice){
+
+    const div = document.createElement('div');
+
+    div.className = "line";
+
+    div.textContent = line;
+
+    textContainer.appendChild(div);
+
+  }
+
+  //保存本页原始快照
+  pageOriginText = textContainer.textContent;
+
+  if(totalPage>0){
+
+    const endLine = Math.min(e, allLines.length);
+
+    pageInfo.textContent = `${currentPage+1}/${totalPage} | ${s+1}‑${endLine}Lines`;
+
+  }else{
+
+    pageInfo.textContent = 'File not loaded';
+
+  }
+
+  btnPrev.disabled = currentPage <= 0;
+
+  btnNext.disabled = currentPage >= totalPage - 1;
+
+  startWatchTranslate(); //开启新页面监听
+}
+
+btnPrev.onclick = ()=>{
+
+  if(currentPage>0){
+
+    currentPage--;
+
+    render();
+
+  }
+
+};
+
+btnNext.onclick = ()=>{
+
+  if(currentPage < totalPage-1){
+
+    currentPage++;
+
+    render();
+
+  }
+
+};
+
+window.addEventListener('beforeunload',()=>{
+    stopWatchTranslate();
+});
+
+</script>
+
+</body>
+
+</html>
