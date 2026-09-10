@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Text Reader</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{height:100vh;overflow:hidden;background:#fff;display:flex;flex-direction:row;}
+/* 主左侧区域 */
+#mainWrap{
+  flex:1;
+  position:relative;
+  height:100vh;
+  overflow:hidden;
+}
+#topBar{
+  position:absolute;
+  top:8px;
+  left:8px;
+  right:8px;
+  z-index:10;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:flex-start;
+}
+#pageInfo{
+  position:absolute;
+  top:10px;
+  right:12px;
+  z-index:11;
+  font-size:14px;
+  color:#444;
+  background:rgba(255,255,255,0.85);
+  padding:2px 6px;
+  border-radius:4px;
+}
+.row-item{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+#textContainer{
+  width:100%;
+  height:calc(100vh - 60px);
+  padding:76px 16px 16px 16px;
+  overflow:auto;
+}
+.line{
+  white-space:pre;
+  font-family:monospace;
+}
+#btnBar{
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:calc(100% - 260px);
+  height:50px;
+  display:flex;
+  justify-content:center;
+  gap:24px;
+  align-items:center;
+  background:#f8f8f8;
+  border-top:1px solid #ccc;
+  z-index:10;
+}
+button{
+  padding:6px 18px;
+  font-size:15px;
+  cursor:pointer;
+}
+button:disabled{
+  cursor:not-allowed;
+  opacity:0.5;
+}
+/* 下一页按钮绿色样式 */
+.btn-next-success{
+  background-color:#28a745;
+  color:white;
+  border:1px solid #28a745;
+}
+input[type="number"]{
+  width:70px;
+  padding:4px;
+}
+/* toast提示 */
+#transToast{
+    position:fixed;
+    bottom:60px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.78);
+    color:#fff;
+    padding:10px 18px;
+    border-radius:8px;
+    z-index:9999;
+    display:none;
+}
+
+/* =========右侧已复制列表面板新增========= */
+#copiedPanel{
+  width:260px;
+  height:100vh;
+  border-left:1px solid #ccc;
+  background:#fafafa;
+  display:flex;
+  flex-direction:column;
+}
+#copiedPanel h4{
+  padding:10px 12px;
+  border-bottom:1px solid #ddd;
+}
+#copiedListWrap{
+  flex:1;
+  overflow:auto;
+  padding:8px;
+}
+.copied-item{
+  font-size:13px;
+  padding:4px 6px;
+  border-bottom:1px solid #eee;
+}
+#copiedCtrl{
+  padding:8px;
+  border-top:1px solid #ddd;
+}
+#btnClearCopied{
+  width:100%;
+  padding:5px;
+}
+</style>
+</head>
+<body>
+<div id="mainWrap">
+  <div id="topBar">
+    <div class="row-item">
+      <input type="file" id="fileInput" accept=".txt">
+    </div>
+    <div class="row-item">
+      <label>Lines per page:</label>
+      <input type="number" id="linesPerPageInput" value="5000" min="1" max="100000">
+      <button id="applyLinesBtn">apply</button>
+    </div>
+    <div class="row-item">
+      <label>译文中文阈值%：</label>
+      <input type="number" id="cnRatioInput" value="30" min="0" max="100">
+    </div>
+  </div>
+  <div id="pageInfo"></div>
+  <div id="textContainer"></div>
+  <div id="btnBar">
+    <button id="btnPrev">Prev page</button>
+    <button id="btnNext">Next page</button>
+  </div>
+  <div id="transToast"></div>
+</div>
+
+<!-- 右侧：已复制列表面板 -->
+<div id="copiedPanel">
+  <h4>✅已复制页码列表</h4>
+  <div id="copiedListWrap"></div>
+  <div id="copiedCtrl">
+    <button id="btnClearCopied">清空列表</button>
+  </div>
+</div>
+
+<script>
+let LINES_PER_PAGE = 5000;
+let CN_RATIO_THRESHOLD = 0.3;
+let allLines = [];
+let currentPage = 0;
+let totalPage = 0;
+// 新增：已复制页码集合，防止重复记录
+const copiedPageSet = new Set();
+
+const fileInput = document.getElementById('fileInput');
+const textContainer = document.getElementById('textContainer');
+const pageInfo = document.getElementById('pageInfo');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const linesPerPageInput = document.getElementById('linesPerPageInput');
+const applyLinesBtn = document.getElementById('applyLinesBtn');
+const transToast = document.getElementById('transToast');
+const cnRatioInput = document.getElementById('cnRatioInput');
+const copiedListWrap = document.getElementById('copiedListWrap');
+const btnClearCopied = document.getElementById('btnClearCopied');
+
+let observer = null;
+let debounceTimer = null;
+let ignoreMutation = false;
+let pageOriginText = "";
+let isWorking = false;
+
+// 渲染右侧已复制列表
+function renderCopiedList(){
+  copiedListWrap.innerHTML = '';
+  const arr = Array.from(copiedPageSet).sort((a,b)=>a-b);
+  if(arr.length ===0){
+    copiedListWrap.innerHTML = '<div style="padding:6px;color:#888;font-size:13px;">暂无已复制页面</div>';
+    return;
+  }
+  arr.forEach(p=>{
+    const div = document.createElement('div');
+    div.className = "copied-item";
+    div.textContent = `第 ${p+1} 页`;
+    copiedListWrap.appendChild(div);
+  })
+}
+// 清空已复制列表
+btnClearCopied.onclick = ()=>{
+  copiedPageSet.clear();
+  renderCopiedList();
+  showToast("已清空复制记录");
+}
+
+function getTextWithLineBreak(container){
+  const linesDom = container.querySelectorAll('.line');
+  const arr = [];
+  linesDom.forEach(el=>{
+    arr.push(el.textContent);
+  })
+  return arr.join('\n');
+}
+
+function getChineseRatio(text) {
+    const cnReg = /[\u4e00-\u9fa5]/g;
+    const charReg = /[^\s]/g;
+    const cnMatch = text.match(cnReg);
+    const charMatch = text.match(charReg);
+    const cnCount = cnMatch ? cnMatch.length : 0;
+    const totalChar = charMatch ? charMatch.length : 0;
+    if(totalChar === 0) return 0;
+    return cnCount / totalChar;
+}
+
+function isWeChatBrowser(){
+    return /micromessenger/i.test(navigator.userAgent);
+}
+
+function showToast(msg){
+    transToast.textContent = msg;
+    transToast.style.display = "block";
+    setTimeout(()=>{
+        transToast.style.display = "none";
+    },2500);
+}
+
+async function copyText(text){
+    if(!text) return false;
+    try{
+        await navigator.clipboard.writeText(text);
+        return true;
+    }catch(err){
+        showToast("❌环境不支持自动复制，请手动复制");
+        return false;
+    }
+}
+
+// 【修复漏翻】优化监听逻辑：加长等待、避免固定延时锁，增加状态标记
+function startWatchTranslate(){
+    if(!isWeChatBrowser()) return;
+    if(observer) observer.disconnect();
+    observer = new MutationObserver((mutationList)=>{
+        if(ignoreMutation) return;
+        if(isWorking) return;
+        if(debounceTimer) clearTimeout(debounceTimer);
+        // 增大防抖时间适配微信翻译慢渲染，修复漏翻
+        debounceTimer = setTimeout(async ()=>{
+            isWorking = true;
+            ignoreMutation = true;
+            const fullTransText = getTextWithLineBreak(textContainer);
+            const currentDomText = fullTransText.trim();
+            if(currentDomText === pageOriginText.trim()){
+                ignoreMutation = false;
+                isWorking = false;
+                return;
+            }
+            const ratio = getChineseRatio(fullTransText);
+            if(ratio < CN_RATIO_THRESHOLD){
+                showToast(`⚠️译文中文占比${(ratio*100).toFixed(1)}%，低于阈值，跳过`);
+                if(window.getSelection) window.getSelection().removeAllRanges();
+                ignoreMutation = false;
+                isWorking = false;
+                return;
+            }
+            const ok = await copyText(fullTransText);
+            if(ok){
+                showToast(`✅复制成功，译文中文${(ratio*100).toFixed(1)}%`);
+                btnNext.classList.add('btn-next-success');
+                // 记录已复制页码，加入右侧列表
+                copiedPageSet.add(currentPage);
+                renderCopiedList();
+
+                if(currentPage < totalPage -1){
+                    setTimeout(()=>{
+                        currentPage++;
+                        render();
+                    }, 900);
+                }
+            }
+            if(window.getSelection) window.getSelection().removeAllRanges();
+            ignoreMutation = false;
+            isWorking = false;
+        }, 1100); // 增大防抖，给微信翻译更多DOM渲染时间，解决漏翻
+    });
+    observer.observe(textContainer,{
+        subtree:true,
+        characterData:true,
+        childList:true
+    });
+}
+
+function stopWatchTranslate(){
+    if(observer) observer.disconnect();
+    if(debounceTimer) clearTimeout(debounceTimer);
+    isWorking = false;
+}
+
+fileInput.onchange = async e=>{
+  const f = e.target.files[0];
+  if(!f)return;
+  // 增加简单文件大小保护，防止大文件卡死
+  if(f.size > 100 * 1024 *1024){
+    showToast("❌文件过大，最大支持100MB");
+    return;
+  }
+  const txt = await f.text();
+  allLines = txt.split(/\r?\n/);
+  while(allLines.length > 0 && allLines.at(-1) === ""){
+    allLines.pop();
+  }
+  currentPage = 0;
+  copiedPageSet.clear(); //打开新文件清空复制记录
+  renderCopiedList();
+  recalcPage();
+  render();
+};
+
+applyLinesBtn.onclick = ()=>{
+  const val = parseInt(linesPerPageInput.value,10);
+  if(!Number.isInteger(val) || val <1 || val>100000) return;
+  const currentLineIndex = currentPage * LINES_PER_PAGE;
+  LINES_PER_PAGE = val;
+  currentPage = Math.floor(currentLineIndex / LINES_PER_PAGE);
+  recalcPage();
+  render();
+};
+
+cnRatioInput.onchange = ()=>{
+  const val = parseFloat(cnRatioInput.value);
+  if(!isNaN(val) && val >=0 && val <=100){
+    CN_RATIO_THRESHOLD = val / 100;
+    showToast(`✅译文中文阈值已设置为${val}%`);
+  }else{
+    showToast("❌请输入0~100之间数字");
+    cnRatioInput.value = CN_RATIO_THRESHOLD *100;
+  }
+}
+
+function recalcPage(){
+  totalPage = allLines.length>0 ? Math.ceil(allLines.length / LINES_PER_PAGE) : 0;
+}
+
+function render(){
+  stopWatchTranslate();
+  textContainer.innerHTML = '';
+  const s = currentPage * LINES_PER_PAGE;
+  const e = s + LINES_PER_PAGE;
+  const slice = allLines.slice(s,e);
+  for(const line of slice){
+    const div = document.createElement('div');
+    div.className = "line";
+    div.textContent = line;
+    textContainer.appendChild(div);
+  }
+  const pageMarkerDiv = document.createElement('div');
+  pageMarkerDiv.className = "line";
+  pageMarkerDiv.textContent = `--- Page: ${currentPage+1} ---`;
+  textContainer.appendChild(pageMarkerDiv);
+  pageOriginText = getTextWithLineBreak(textContainer);
+  if(totalPage>0){
+    const endLine = Math.min(e, allLines.length);
+    pageInfo.textContent = `${currentPage+1}/${totalPage} | ${s+1}‑${endLine}Lines`;
+  }else{
+    pageInfo.textContent = 'File not loaded';
+  }
+  btnPrev.disabled = currentPage <= 0;
+  btnNext.disabled = currentPage >= totalPage - 1;
+  btnNext.classList.remove('btn-next-success');
+  startWatchTranslate();
+}
+
+btnPrev.onclick = ()=>{
+  if(currentPage>0){
+    currentPage--;
+    render();
+  }
+};
+btnNext.onclick = ()=>{
+  if(currentPage < totalPage-1){
+    currentPage++;
+    render();
+  }
+};
+
+window.addEventListener('beforeunload',()=>{
+    stopWatchTranslate();
+});
+
+//初始化渲染空列表
+renderCopiedList();
+</script>
+</body>
+</html>
